@@ -194,17 +194,22 @@
 
   <button onclick="openModal()">Autenticar Telegram</button>
 
-  <!-- Modal -->
+  <!-- Modal actualizado -->
   <div id="authModal" class="modal">
     <div class="modal-content">
       <span class="close" onclick="closeModal()">&times;</span>
       <h2>Autenticación de Telegram</h2>
       <form id="auth-form">
-        <label for="phone_number">Número de Teléfono:</label><br>
-        <input type="text" id="phone_number" name="phone_number" required><br><br>
-        <label for="verification_code">Código de Verificación:</label><br>
-        <input type="text" id="verification_code" name="verification_code"><br><br>
-        <button type="button" onclick="authenticate()">Enviar</button>
+        <div id="phone-step">
+          <label for="phone_number">Número de Teléfono:</label><br>
+          <input type="text" id="phone_number" name="phone_number" required><br><br>
+          <button type="button" onclick="sendPhoneNumber()">Enviar Número</button>
+        </div>
+        <div id="code-step" style="display: none;">
+          <label for="verification_code">Código de Verificación:</label><br>
+          <input type="text" id="verification_code" name="verification_code" required><br><br>
+          <button type="button" onclick="sendVerificationCode()">Enviar Código</button>
+        </div>
       </form>
     </div>
   </div>
@@ -325,6 +330,8 @@
     // Función para abrir el modal
     function openModal() {
       document.getElementById('authModal').style.display = 'block';
+      document.getElementById('phone-step').style.display = 'block';
+      document.getElementById('code-step').style.display = 'none';
     }
 
     // Función para cerrar el modal
@@ -332,8 +339,28 @@
       document.getElementById('authModal').style.display = 'none';
     }
 
-    // Función para autenticar
-    async function authenticate() {
+    // Función para enviar el número de teléfono
+    async function sendPhoneNumber() {
+      const phoneNumber = document.getElementById('phone_number').value;
+
+      const response = await fetch('/authenticate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone_number: phoneNumber })
+      });
+
+      const result = await response.json();
+      alert(result.status || result.error);
+
+      if (result.status === 'Código de verificación enviado') {
+        // Mostrar el paso para ingresar el código
+        document.getElementById('phone-step').style.display = 'none';
+        document.getElementById('code-step').style.display = 'block';
+      }
+    }
+
+    // Función para enviar el código de verificación
+    async function sendVerificationCode() {
       const phoneNumber = document.getElementById('phone_number').value;
       const verificationCode = document.getElementById('verification_code').value;
 
@@ -353,4 +380,3 @@
   </script>
 </body>
 </html>
-``` 
