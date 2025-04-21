@@ -97,6 +97,36 @@ def stop_sending():
     stop_event.set()
     return jsonify({'status': 'Detenido'})
 
+# Endpoint para autenticar la cuenta de Telegram
+@app.route('/authenticate', methods=['POST'])
+def authenticate():
+    data = request.json
+    phone_number = data.get('phone_number', '')
+    verification_code = data.get('verification_code', '')
+
+    if not phone_number:
+        return jsonify({'error': 'Número de teléfono requerido'}), 400
+
+    async def authenticate_user():
+        async with TelegramClient(SESSION_NAME, api_id, api_hash) as client:
+            try:
+                if not await client.is_user_authorized():
+                    await client.send_code_request(phone_number)
+                    if verification_code:
+                        await client.sign_in(phone_number, verification_code)
+                        return {'status': 'Autenticado correctamente'}
+                    else:
+                        return {'status': 'Código de verificación enviado'}
+                else:
+                    return {'status': 'Ya autenticado'}
+            except errors.SessionPasswordNeededError:
+                return {'error': 'Se requiere contraseña de verificación en dos pasos'}
+            except Exception as e:
+                return {'error': f'Error al autenticar: {e}'}
+
+    result = asyncio.run(authenticate_user())
+    return jsonify(result)
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=True)
