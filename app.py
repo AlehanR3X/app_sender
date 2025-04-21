@@ -105,40 +105,6 @@ def stop_sending():
     stop_event.set()
     return jsonify({'status': 'Detenido'})
 
-# Endpoint para autenticar
-@app.route('/authenticate', methods=['POST'])
-def authenticate():
-    data = request.json
-    phone = data.get('phone_number')
-    code = data.get('verification_code')
-
-    # Guardar teléfono en sesión si se proporciona
-    if phone:
-        session['phone'] = phone
-    elif 'phone' not in session:
-        return jsonify({'error': 'Número de teléfono no especificado'}), 400
-
-    async def auth_flow():
-        async with TelegramClient(SESSION_NAME, api_id, api_hash) as client:
-            try:
-                if not await client.is_user_authorized():
-                    if not code:
-                        # Enviar código
-                        await client.send_code_request(session['phone'])
-                        return {'status': 'Código de verificación enviado'}
-                    else:
-                        # Firmar con código
-                        await client.sign_in(phone=session['phone'], code=code)
-                        return {'status': 'Autenticado correctamente'}
-                return {'status': 'Ya autenticado'}
-            except errors.SessionPasswordNeededError:
-                return {'error': 'Se requiere contraseña de segundo factor'}
-            except Exception as e:
-                return {'error': f'Error al autenticar: {e}'}
-
-    result = asyncio.run(auth_flow())
-    return jsonify(result)
-
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=True)
