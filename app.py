@@ -12,7 +12,8 @@ import os
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'cambia_esto_por_un_valor_seguro')
 
-# Variables globales para el control del envío\ nsending_thread = None
+# Variables globales para el control del envío
+sending_thread = None
 stop_event = threading.Event()
 pause_event = threading.Event()
 
@@ -88,7 +89,8 @@ def start_sending():
     sending_thread.start()
     return jsonify({'status': 'Envío iniciado'})
 
-# Endpoint para pausar/reanudar\ n@app.route('/pause', methods=['POST'])
+# Endpoint para pausar/reanudar
+@app.route('/pause', methods=['POST'])
 def pause_sending():
     if pause_event.is_set():
         pause_event.clear()
@@ -97,18 +99,21 @@ def pause_sending():
         pause_event.set()
         return jsonify({'status': 'Pausado'})
 
-# Endpoint para detener\ n@app.route('/stop', methods=['POST'])
+# Endpoint para detener
+@app.route('/stop', methods=['POST'])
 def stop_sending():
     stop_event.set()
     return jsonify({'status': 'Detenido'})
 
-# Endpoint para autenticar\ n@app.route('/authenticate', methods=['POST'])
+# Endpoint para autenticar
+@app.route('/authenticate', methods=['POST'])
 def authenticate():
     data = request.json
     phone = data.get('phone_number')
-    code  = data.get('verification_code')
+    code = data.get('verification_code')
 
-    # Guardar teléfono en sesión si se proporciona\ n    if phone:
+    # Guardar teléfono en sesión si se proporciona
+    if phone:
         session['phone'] = phone
     elif 'phone' not in session:
         return jsonify({'error': 'Número de teléfono no especificado'}), 400
