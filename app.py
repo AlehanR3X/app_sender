@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, render_template, session
 from telethon import TelegramClient, errors
 import asyncio
 import threading
@@ -10,9 +10,9 @@ from config import (
 import os
 
 app = Flask(__name__)
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'cambia_esto_por_un_valor_seguro')
 
-# Variables globales para el control del envío
-sending_thread = None
+# Variables globales para el control del envío\ nsending_thread = None
 stop_event = threading.Event()
 pause_event = threading.Event()
 
@@ -26,12 +26,10 @@ async def send_messages(prefix, lines, destination, sleep_time):
     async with TelegramClient(SESSION_NAME, api_id, api_hash) as client:
         try:
             if not await client.is_user_authorized():
-                print("Autenticación requerida. Iniciando sesión...")
                 await client.start()
         except errors.PasswordHashInvalidError:
-            print("Se requiere contraseña de verificación en dos pasos.")
-            password = input("Introduce la contraseña de verificación en dos pasos: ")
-            await client.sign_in(password=password)
+            # La contraseña de 2FA debería haberse ingresado via endpoint separado
+            return
         except Exception as e:
             print(f"Error al iniciar sesión: {e}")
             return
@@ -60,12 +58,17 @@ def start_sending():
     prefix = data.get('prefix', '')
     lines = data.get('lines', [])
     destination = data.get('destination', '')
-    sleep_time = int(data.get('sleep_time', SLEEP_TIME))  # Convertir a entero
+    sleep_time = int(data.get('sleep_time', SLEEP_TIME))
 
-    if not prefix or not lines or not destination:
-        return jsonify({'error': 'Faltan datos necesarios'}), 400
+    # Validaciones
+    if not prefix or not isinstance(lines, list) or not all(isinstance(l, str) for l in lines):
+        return jsonify({'error': 'El prefijo y las líneas son requeridos y deben ser texto.'}), 400
+    if not destination:
+        return jsonify({'error': 'Destino requerido'}), 400
+    if sending_thread and sending_thread.is_alive():
+        return jsonify({'error': 'Ya hay un envío en curso.'}), 400
 
-    # Validar el destino
+    # Mapear destinos a valores reales
     destinations = {
         "bot_username": bot_username,
         "bot2_username": bot2_username,
@@ -76,13 +79,16 @@ def start_sending():
     }
     destination = destinations.get(destination, destination)
 
-    # Iniciar el envío en un hilo separado
-    sending_thread = threading.Thread(target=asyncio.run, args=(send_messages(prefix, lines, destination, sleep_time),))
+    # Iniciar hilo de envío
+    def run_async():
+        asyncio.new_event_loop().run_until_complete(
+            send_messages(prefix, lines, destination, sleep_time)
+        )
+    sending_thread = threading.Thread(target=run_async)
     sending_thread.start()
     return jsonify({'status': 'Envío iniciado'})
 
-# Endpoint para pausar o reanudar el envío
-@app.route('/pause', methods=['POST'])
+# Endpoint para pausar/reanudar\ n@app.route('/pause', methods=['POST'])
 def pause_sending():
     if pause_event.is_set():
         pause_event.clear()
@@ -91,42 +97,41 @@ def pause_sending():
         pause_event.set()
         return jsonify({'status': 'Pausado'})
 
-# Endpoint para detener el envío
-@app.route('/stop', methods=['POST'])
+# Endpoint para detener\ n@app.route('/stop', methods=['POST'])
 def stop_sending():
     stop_event.set()
     return jsonify({'status': 'Detenido'})
 
-# Endpoint para autenticar la cuenta de Telegram
-@app.route('/authenticate', methods=['POST'])
+# Endpoint para autenticar\ n@app.route('/authenticate', methods=['POST'])
 def authenticate():
     data = request.json
-    phone_number = data.get('phone_number', '')
-    verification_code = data.get('verification_code', '')
+    phone = data.get('phone_number')
+    code  = data.get('verification_code')
 
-    if not phone_number:
-        return jsonify({'error': 'Número de teléfono requerido'}), 400
+    # Guardar teléfono en sesión si se proporciona\ n    if phone:
+        session['phone'] = phone
+    elif 'phone' not in session:
+        return jsonify({'error': 'Número de teléfono no especificado'}), 400
 
-    async def authenticate_user():
+    async def auth_flow():
         async with TelegramClient(SESSION_NAME, api_id, api_hash) as client:
             try:
                 if not await client.is_user_authorized():
-                    if not verification_code:
-                        # Enviar código de verificación
-                        await client.send_code_request(phone_number)
+                    if not code:
+                        # Enviar código
+                        await client.send_code_request(session['phone'])
                         return {'status': 'Código de verificación enviado'}
                     else:
-                        # Autenticar con el código de verificación
-                        await client.sign_in(phone=phone_number, code=verification_code)
+                        # Firmar con código
+                        await client.sign_in(phone=session['phone'], code=code)
                         return {'status': 'Autenticado correctamente'}
-                else:
-                    return {'status': 'Ya autenticado'}
+                return {'status': 'Ya autenticado'}
             except errors.SessionPasswordNeededError:
-                return {'error': 'Se requiere contraseña de verificación en dos pasos'}
+                return {'error': 'Se requiere contraseña de segundo factor'}
             except Exception as e:
                 return {'error': f'Error al autenticar: {e}'}
 
-    result = asyncio.run(authenticate_user())
+    result = asyncio.run(auth_flow())
     return jsonify(result)
 
 if __name__ == '__main__':
