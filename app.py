@@ -117,7 +117,7 @@ def authenticate():
                         return {'status': 'Código de verificación enviado'}
                     else:
                         # Autenticar con el código de verificación
-                        await client.sign_in(phone_number, verification_code)
+                        await client.sign_in(phone=phone_number, code=verification_code)
                         return {'status': 'Autenticado correctamente'}
                 else:
                     return {'status': 'Ya autenticado'}
