@@ -111,12 +111,14 @@ def authenticate():
         async with TelegramClient(SESSION_NAME, api_id, api_hash) as client:
             try:
                 if not await client.is_user_authorized():
-                    await client.send_code_request(phone_number)
-                    if verification_code:
+                    if not verification_code:
+                        # Enviar código de verificación
+                        await client.send_code_request(phone_number)
+                        return {'status': 'Código de verificación enviado'}
+                    else:
+                        # Autenticar con el código de verificación
                         await client.sign_in(phone_number, verification_code)
                         return {'status': 'Autenticado correctamente'}
-                    else:
-                        return {'status': 'Código de verificación enviado'}
                 else:
                     return {'status': 'Ya autenticado'}
             except errors.SessionPasswordNeededError:
