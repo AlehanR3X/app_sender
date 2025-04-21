@@ -192,30 +192,6 @@
     </form>
   </div>
 
-  <button onclick="openModal()">Autenticar Telegram</button>
-
-  <!-- Modal actualizado -->
-  <div id="authModal" class="modal">
-    <div class="modal-content">
-      <span class="close" onclick="closeModal()">&times;</span>
-      <h2>Autenticación de Telegram</h2>
-      <div id="phone-step">
-        <label for="phone_number">Número de Teléfono:</label><br>
-        <input type="text" id="phone_number" required><br><br>
-        <button type="button" onclick="sendPhoneNumber()">Enviar Número</button>
-      </div>
-      <div id="savedPhoneDisplay" style="display:none;">
-        <p>Usando: <span id="phoneValue"></span>
-        <button onclick="changePhone()">Cambiar</button></p>
-      </div>
-      <div id="code-step" style="display: none;">
-        <label for="verification_code">Código de Verificación:</label><br>
-        <input type="text" id="verification_code" required><br><br>
-        <button type="button" onclick="sendVerificationCode()">Enviar Código</button>
-      </div>
-    </div>
-  </div>
-  
   <script>
     // Referencias a elementos del DOM
     const startBtn = document.getElementById('startBtn');
@@ -328,68 +304,7 @@
         showNotification('Error al detener el envío.', false);
       }
     });
-
-    // Función para abrir el modal
-    function openModal() {
-      document.getElementById('authModal').style.display = 'block';
-      const saved = localStorage.getItem('telegram_phone');
-      if (saved) {
-        document.getElementById('phone-step').style.display = 'none';
-        document.getElementById('savedPhoneDisplay').style.display = 'block';
-        document.getElementById('phoneValue').textContent = saved;
-        document.getElementById('code-step').style.display = 'block';
-      } else {
-        document.getElementById('phone-step').style.display = 'block';
-        document.getElementById('savedPhoneDisplay').style.display = 'none';
-        document.getElementById('code-step').style.display = 'none';
-      }
-    }
-
-    // Función para cerrar el modal
-    function closeModal() {
-      document.getElementById('authModal').style.display = 'none';
-    }
-
-    // Función para cambiar el teléfono
-    function changePhone() {
-      localStorage.removeItem('telegram_phone');
-      document.getElementById('phone-step').style.display = 'block';
-      document.getElementById('savedPhoneDisplay').style.display = 'none';
-      document.getElementById('code-step').style.display = 'none';
-    }
-
-    // Función para enviar el número de teléfono
-    async function sendPhoneNumber() {
-      const phone = document.getElementById('phone_number').value.trim();
-      if (!phone.match(/^\+?[0-9]{7,15}$/)) return alert('Formato inválido');
-      localStorage.setItem('telegram_phone', phone);
-      const res = await fetch('/authenticate', {
-        method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({phone_number: phone})
-      });
-      const j = await res.json(); alert(j.status||j.error);
-      if (j.status === 'Código de verificación enviado') {
-        document.getElementById('phone-step').style.display = 'none';
-        document.getElementById('savedPhoneDisplay').style.display = 'block';
-        document.getElementById('phoneValue').textContent = phone;
-        document.getElementById('code-step').style.display = 'block';
-      }
-    }
-
-    // Función para enviar el código de verificación
-    async function sendVerificationCode() {
-      const code = document.getElementById('verification_code').value.trim();
-      if (!code) return;
-      const phone = localStorage.getItem('telegram_phone');
-      const res = await fetch('/authenticate', {
-        method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({verification_code: code})
-      });
-      const j = await res.json(); alert(j.status||j.error);
-      if (j.status === 'Autenticado correctamente') {
-        closeModal();
-      }
-    }
   </script>
 </body>
 </html>
+``` 
