@@ -199,18 +199,20 @@
     <div class="modal-content">
       <span class="close" onclick="closeModal()">&times;</span>
       <h2>Autenticación de Telegram</h2>
-      <form id="auth-form">
-        <div id="phone-step">
-          <label for="phone_number">Número de Teléfono:</label><br>
-          <input type="text" id="phone_number" name="phone_number" required><br><br>
-          <button type="button" onclick="sendPhoneNumber()">Enviar Número</button>
-        </div>
-        <div id="code-step" style="display: none;">
-          <label for="verification_code">Código de Verificación:</label><br>
-          <input type="text" id="verification_code" name="verification_code" required><br><br>
-          <button type="button" onclick="sendVerificationCode()">Enviar Código</button>
-        </div>
-      </form>
+      <div id="phone-step">
+        <label for="phone_number">Número de Teléfono:</label><br>
+        <input type="text" id="phone_number" required><br><br>
+        <button type="button" onclick="sendPhoneNumber()">Enviar Número</button>
+      </div>
+      <div id="savedPhoneDisplay" style="display:none;">
+        <p>Usando: <span id="phoneValue"></span>
+        <button onclick="changePhone()">Cambiar</button></p>
+      </div>
+      <div id="code-step" style="display: none;">
+        <label for="verification_code">Código de Verificación:</label><br>
+        <input type="text" id="verification_code" required><br><br>
+        <button type="button" onclick="sendVerificationCode()">Enviar Código</button>
+      </div>
     </div>
   </div>
   
@@ -330,8 +332,17 @@
     // Función para abrir el modal
     function openModal() {
       document.getElementById('authModal').style.display = 'block';
-      document.getElementById('phone-step').style.display = 'block';
-      document.getElementById('code-step').style.display = 'none';
+      const saved = localStorage.getItem('telegram_phone');
+      if (saved) {
+        document.getElementById('phone-step').style.display = 'none';
+        document.getElementById('savedPhoneDisplay').style.display = 'block';
+        document.getElementById('phoneValue').textContent = saved;
+        document.getElementById('code-step').style.display = 'block';
+      } else {
+        document.getElementById('phone-step').style.display = 'block';
+        document.getElementById('savedPhoneDisplay').style.display = 'none';
+        document.getElementById('code-step').style.display = 'none';
+      }
     }
 
     // Función para cerrar el modal
@@ -339,41 +350,43 @@
       document.getElementById('authModal').style.display = 'none';
     }
 
+    // Función para cambiar el teléfono
+    function changePhone() {
+      localStorage.removeItem('telegram_phone');
+      document.getElementById('phone-step').style.display = 'block';
+      document.getElementById('savedPhoneDisplay').style.display = 'none';
+      document.getElementById('code-step').style.display = 'none';
+    }
+
     // Función para enviar el número de teléfono
     async function sendPhoneNumber() {
-      const phoneNumber = document.getElementById('phone_number').value;
-
-      const response = await fetch('/authenticate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone_number: phoneNumber })
+      const phone = document.getElementById('phone_number').value.trim();
+      if (!phone.match(/^\+?[0-9]{7,15}$/)) return alert('Formato inválido');
+      localStorage.setItem('telegram_phone', phone);
+      const res = await fetch('/authenticate', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({phone_number: phone})
       });
-
-      const result = await response.json();
-      alert(result.status || result.error);
-
-      if (result.status === 'Código de verificación enviado') {
-        // Mostrar el paso para ingresar el código
+      const j = await res.json(); alert(j.status||j.error);
+      if (j.status === 'Código de verificación enviado') {
         document.getElementById('phone-step').style.display = 'none';
+        document.getElementById('savedPhoneDisplay').style.display = 'block';
+        document.getElementById('phoneValue').textContent = phone;
         document.getElementById('code-step').style.display = 'block';
       }
     }
 
     // Función para enviar el código de verificación
     async function sendVerificationCode() {
-      const phoneNumber = document.getElementById('phone_number').value;
-      const verificationCode = document.getElementById('verification_code').value;
-
-      const response = await fetch('/authenticate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone_number: phoneNumber, verification_code: verificationCode })
+      const code = document.getElementById('verification_code').value.trim();
+      if (!code) return;
+      const phone = localStorage.getItem('telegram_phone');
+      const res = await fetch('/authenticate', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({verification_code: code})
       });
-
-      const result = await response.json();
-      alert(result.status || result.error);
-
-      if (result.status === 'Autenticado correctamente') {
+      const j = await res.json(); alert(j.status||j.error);
+      if (j.status === 'Autenticado correctamente') {
         closeModal();
       }
     }
