@@ -24,9 +24,12 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ThreadPool para tareas de envío
-eecutor = ThreadPoolExecutor(max_workers=int(os.environ.get('MAX_WORKERS', 5)))
+executor = ThreadPoolExecutor(max_workers=int(os.environ.get('MAX_WORKERS', 5)))
 # Estructura para almacenar estado de tareas
 tasks = {}
+
+# Variable global para rastrear si hay una tarea activa
+active_task = None
 
 def validate_destination(dest_key):
     mapping = {
@@ -38,6 +41,21 @@ def validate_destination(dest_key):
         "GROUP_CHAT2_ID": GROUP_CHAT2_ID
     }
     return mapping.get(dest_key)
+
+# Crear una instancia global de TelegramClient
+telegram_client = TelegramClient(SESSION_NAME, api_id, api_hash)
+
+# Inicializar la sesión al inicio de la aplicación
+async def initialize_telegram_client():
+    try:
+        if not await telegram_client.is_user_authorized():
+            await telegram_client.start()
+        logger.info("Cliente de Telegram inicializado correctamente.")
+    except Exception as e:
+        logger.error(f"Error al inicializar el cliente de Telegram: {e}")
+
+# Llamar a la inicialización al inicio de la aplicación
+asyncio.run(initialize_telegram_client())
 
 class MessageTask:
     def __init__(self, job_id, prefix, lines, destination, sleep_time):
@@ -65,17 +83,7 @@ class MessageTask:
         logger.info(f"Task {self.job_id} ended with status: {self.status}")
 
     async def _send(self):
-        async with TelegramClient(SESSION_NAME, api_id, api_hash) as client:
-            try:
-                if not await client.is_user_authorized():
-                    await client.start()
-            except errors.PasswordHashInvalidError:
-                logger.error(f"2FA invalida para {self.job_id}")
-                return
-            except Exception as e:
-                logger.error(f"Error al iniciar sesión [{self.job_id}]: {e}")
-                return
-
+        try:
             for line in self.lines:
                 if self.stop_event.is_set():
                     break
@@ -85,12 +93,14 @@ class MessageTask:
                 self.status = 'running'
                 message = f"{self.prefix} {line}"
                 try:
-                    await client.send_message(self.destination, message)
+                    await telegram_client.send_message(self.destination, message)
                     self.sent += 1
                     logger.info(f"[{self.job_id}] Enviado: {message}")
                 except Exception as e:
                     logger.error(f"[{self.job_id}] Error al enviar: {e}")
                 await asyncio.sleep(self.sleep_time)
+        except Exception as e:
+            logger.error(f"Error en la tarea [{self.job_id}]: {e}")
 
 # Rutas de la aplicación
 @app.route('/')
@@ -105,9 +115,11 @@ def start_sending():
     dest_key = data.get('destination', '')
     sleep_time = int(data.get('sleep_time', SLEEP_TIME))
 
-    # Validaciones básicas
-    if not prefix or not isinstance(lines, list) or not lines or not all(isinstance(l, str) for l in lines):
-        return jsonify({'error': 'Prefijo y líneas válidas son requeridos.'}), 400
+    # Validaciones mejoradas
+    if not prefix or len(prefix) > 50:
+        return jsonify({'error': 'El prefijo es requerido y no debe exceder 50 caracteres.'}), 400
+    if not isinstance(lines, list) or not lines or len(lines) > 1000 or not all(isinstance(l, str) and len(l) <= 200 for l in lines):
+        return jsonify({'error': 'Las líneas deben ser una lista de hasta 1000 elementos, cada uno con un máximo de 200 caracteres.'}), 400
     destination = validate_destination(dest_key)
     if not destination:
         return jsonify({'error': 'Destino inválido.'}), 400
@@ -141,12 +153,19 @@ def resume_sending():
 
 @app.route('/stop', methods=['POST'])
 def stop_sending():
+    global active_task
+
     data = request.get_json()
     job_id = data.get('job_id')
     task = tasks.get(job_id)
     if not task:
         return jsonify({'error': 'Job no encontrado.'}), 404
     task.stop_event.set()
+
+    # Limpiar la tarea activa si se detiene
+    if active_task and active_task.job_id == job_id:
+        active_task = None
+
     return jsonify({'status': 'stopped'}), 200
 
 @app.route('/progress', methods=['GET'])
