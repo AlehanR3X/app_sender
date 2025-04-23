@@ -150,7 +150,7 @@
     <form id="messageForm">
       <label for="prefix">Prefijo:</label>
       <div style="display: flex; gap: 10px;">
-        <input type="text" id="prefix" placeholder="Ingrese prefijo personalizado...">
+        <input type="text" id="prefix" placeholder="Ingrese prefijo personalizado..." aria-label="Prefijo personalizado">
         <select id="prefixCombo">
           <option value="">Seleccionar</option>
           <option value=".pt">.pt</option>
@@ -161,11 +161,11 @@
       </div>
   
       <label for="data">Datos:</label>
-      <textarea id="data" placeholder="Un registro por línea..."></textarea>
+      <textarea id="data" placeholder="Un registro por línea..." aria-label="Datos para enviar"></textarea>
       <div id="timerDisplay" style="text-align: center; margin-top: 15px; font-size: 16px;"></div>
   
       <label for="destination">Destino:</label>
-      <select id="destination">
+      <select id="destination" aria-label="Seleccionar destino">
         <option value="bot_username">Bot principal</option>
         <option value="GROUP_CHAT_ID">Grupo 1</option>
         <option value="bot2_username">Bot_1</option>
@@ -200,10 +200,24 @@
     const progressBar = document.getElementById('progress');
     const notification = document.getElementById('notification');
     const timerDisplay = document.getElementById('timerDisplay');
+    let interval; // Variable global para el temporizador
 
     // Función para mostrar el temporizador
     function updateTimer(seconds) {
       timerDisplay.textContent = `Siguiente envío en: ${seconds}s`;
+    }
+
+    // Deshabilitar controles durante el envío
+    function toggleControls(disabled) {
+      document.getElementById('prefix').disabled = disabled;
+      document.getElementById('prefixCombo').disabled = disabled;
+      document.getElementById('data').disabled = disabled;
+      document.getElementById('destination').disabled = disabled;
+      document.getElementById('sleepSlider').disabled = disabled;
+      document.getElementById('sleepTime').disabled = disabled;
+      startBtn.disabled = disabled;
+      document.getElementById('pauseBtn').disabled = !disabled;
+      document.getElementById('stopBtn').disabled = !disabled;
     }
 
     // Función para iniciar el envío
@@ -213,11 +227,23 @@
       const destination = document.getElementById('destination').value;
       const sleepTime = parseInt(document.getElementById('sleepSlider').value, 10);
 
-      if (!prefix || lines.length === 0 || !destination) {
-        notification.textContent = 'Por favor completa todos los campos!';
+      if (!prefix || prefix.length > 50) {
+        notification.textContent = 'El prefijo es obligatorio y no debe exceder 50 caracteres.';
         notification.style.display = 'block';
         return;
       }
+      if (lines.length === 0 || lines.length > 1000) {
+        notification.textContent = 'Debe haber entre 1 y 1000 líneas de datos.';
+        notification.style.display = 'block';
+        return;
+      }
+      if (!destination) {
+        notification.textContent = 'Debe seleccionar un destino válido.';
+        notification.style.display = 'block';
+        return;
+      }
+
+      toggleControls(true); // Deshabilitar controles
 
       // Enviar cada línea con un temporizador
       for (let i = 0; i < lines.length; i++) {
@@ -228,7 +254,7 @@
         let countdown = sleepTime;
         updateTimer(countdown);
 
-        const interval = setInterval(() => {
+        interval = setInterval(() => {
           countdown--;
           updateTimer(countdown);
           if (countdown <= 0) clearInterval(interval);
@@ -262,6 +288,38 @@
       updateTimer(0);
       notification.textContent = 'Envío completado!';
       notification.style.display = 'block';
+      toggleControls(false); // Habilitar controles al finalizar
+    });
+
+    // Detener temporizador al pausar o detener
+    document.getElementById('pauseBtn').addEventListener('click', () => {
+      clearInterval(interval);
+      notification.textContent = 'Envío pausado.';
+      notification.style.display = 'block';
+    });
+
+    document.getElementById('stopBtn').addEventListener('click', () => {
+      clearInterval(interval);
+      notification.textContent = 'Envío detenido.';
+      notification.style.display = 'block';
+    });
+  </script>
+  <script>
+    // Referencias al DOM
+    const sleepSlider = document.getElementById('sleepSlider');
+    const sleepTime = document.getElementById('sleepTime');
+
+    // Sincronizar el valor del control deslizante con el campo de texto
+    sleepSlider.addEventListener('input', () => {
+      sleepTime.value = sleepSlider.value;
+    });
+
+    // Sincronizar el valor del campo de texto con el control deslizante
+    sleepTime.addEventListener('input', () => {
+      const value = parseInt(sleepTime.value, 10);
+      if (!isNaN(value) && value >= parseInt(sleepSlider.min) && value <= parseInt(sleepSlider.max)) {
+        sleepSlider.value = value;
+      }
     });
   </script>
 </body>
