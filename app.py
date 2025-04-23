@@ -30,6 +30,7 @@ tasks = {}
 
 # Variable global para rastrear si hay una tarea activa
 active_task = None
+active_task_lock = threading.Lock()
 
 def validate_destination(dest_key):
     mapping = {
@@ -63,6 +64,17 @@ except Exception as e:
     logger.error("No se pudo inicializar el cliente de Telegram. Verifica las credenciales y la conexión.")
     exit(1)  # Salir si no se puede inicializar el cliente
 
+async def ensure_telegram_connection():
+    try:
+        if not telegram_client.is_connected():
+            await telegram_client.connect()
+            if not await telegram_client.is_user_authorized():
+                await telegram_client.start()
+            logger.info("Reconexión automática del cliente de Telegram exitosa.")
+    except Exception as e:
+        logger.error(f"Error al reconectar el cliente de Telegram: {e}")
+        raise e  # Lanzar el error para manejarlo adecuadamente
+
 class MessageTask:
     def __init__(self, job_id, prefix, lines, destination, sleep_time):
         self.job_id = job_id
@@ -79,7 +91,12 @@ class MessageTask:
 
     def run(self):
         self.status = 'running'
-        asyncio.new_event_loop().run_until_complete(self._send())
+        loop = asyncio.get_event_loop()
+        future = asyncio.run_coroutine_threadsafe(self._send(), loop)
+        try:
+            future.result()  # Bloquea hasta que la tarea termine
+        except Exception as e:
+            logger.error(f"Error en la tarea [{self.job_id}]: {e}")
         if self.sent >= self.total:
             self.status = 'completed'
         elif self.stop_event.is_set():
@@ -108,6 +125,7 @@ class MessageTask:
                     logger.error(f"[{self.job_id}] Error al enviar: {e}")
                 await asyncio.sleep(self.sleep_time)
         except Exception as e:
+            self.status = 'error'
             logger.error(f"Error en la tarea [{self.job_id}]: {e}")
 
 # Rutas de la aplicación
@@ -171,8 +189,9 @@ def stop_sending():
     task.stop_event.set()
 
     # Limpiar la tarea activa si se detiene
-    if active_task and active_task.job_id == job_id:
-        active_task = None
+    with active_task_lock:
+        if active_task and active_task.job_id == job_id:
+            active_task = None
 
     return jsonify({'status': 'stopped'}), 200
 
