@@ -48,14 +48,20 @@ telegram_client = TelegramClient(SESSION_NAME, api_id, api_hash)
 # Inicializar la sesión al inicio de la aplicación
 async def initialize_telegram_client():
     try:
+        await telegram_client.connect()
         if not await telegram_client.is_user_authorized():
             await telegram_client.start()
         logger.info("Cliente de Telegram inicializado correctamente.")
     except Exception as e:
         logger.error(f"Error al inicializar el cliente de Telegram: {e}")
+        raise e  # Lanzar el error para que sea manejado adecuadamente
 
 # Llamar a la inicialización al inicio de la aplicación
-asyncio.run(initialize_telegram_client())
+try:
+    asyncio.run(initialize_telegram_client())
+except Exception as e:
+    logger.error("No se pudo inicializar el cliente de Telegram. Verifica las credenciales y la conexión.")
+    exit(1)  # Salir si no se puede inicializar el cliente
 
 class MessageTask:
     def __init__(self, job_id, prefix, lines, destination, sleep_time):
@@ -84,6 +90,8 @@ class MessageTask:
 
     async def _send(self):
         try:
+            if not telegram_client.is_connected():
+                await telegram_client.connect()
             for line in self.lines:
                 if self.stop_event.is_set():
                     break
@@ -103,11 +111,11 @@ class MessageTask:
             logger.error(f"Error en la tarea [{self.job_id}]: {e}")
 
 # Rutas de la aplicación
-@app.route('/')
+@tpl.route('/')
 def index():
     return render_template('index.html')
 
-@app.route('/start', methods=['POST'])
+@tpl.route('/start', methods=['POST'])
 def start_sending():
     data = request.get_json()
     prefix = data.get('prefix', '')
@@ -131,7 +139,7 @@ def start_sending():
 
     return jsonify({'status': 'started', 'job_id': job_id}), 202
 
-@app.route('/pause', methods=['POST'])
+@tpl.route('/pause', methods=['POST'])
 def pause_sending():
     data = request.get_json()
     job_id = data.get('job_id')
@@ -141,7 +149,7 @@ def pause_sending():
     task.pause_event.set()
     return jsonify({'status': 'paused'}), 200
 
-@app.route('/resume', methods=['POST'])
+@tpl.route('/resume', methods=['POST'])
 def resume_sending():
     data = request.get_json()
     job_id = data.get('job_id')
@@ -151,7 +159,7 @@ def resume_sending():
     task.pause_event.clear()
     return jsonify({'status': 'running'}), 200
 
-@app.route('/stop', methods=['POST'])
+@tpl.route('/stop', methods=['POST'])
 def stop_sending():
     global active_task
 
@@ -168,7 +176,7 @@ def stop_sending():
 
     return jsonify({'status': 'stopped'}), 200
 
-@app.route('/progress', methods=['GET'])
+@tpl.route('/progress', methods=['GET'])
 def progress():
     job_id = request.args.get('job_id')
     task = tasks.get(job_id)
