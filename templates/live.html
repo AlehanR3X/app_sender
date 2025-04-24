@@ -29,7 +29,22 @@
         </form>
 
         <div id="status"></div>
-        <div id="messages"></div>
+
+        <h2>Datos Extraídos</h2>
+        <button type="button" id="refreshData">Actualizar Datos</button>
+        <table id="extractedData" border="1">
+            <thead>
+                <tr>
+                    <th>Fecha</th>
+                    <th>ID del Remitente</th>
+                    <th>Información del Chat</th>
+                    <th>Mensaje</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Los datos extraídos se cargarán dinámicamente aquí -->
+            </tbody>
+        </table>
     </div>
 
     <script>
@@ -69,6 +84,31 @@
             const result = await response.json();
             document.getElementById('status').innerText = result.status || result.error;
         });
+
+        // Cargar los datos extraídos desde el servidor
+        async function loadExtractedData() {
+            const response = await fetch('/live/data');
+            const data = await response.json();
+            const tableBody = document.getElementById('extractedData').querySelector('tbody');
+            tableBody.innerHTML = ''; // Limpiar la tabla antes de cargar nuevos datos
+
+            data.forEach(row => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${row.date}</td>
+                    <td>${row.sender_id}</td>
+                    <td>${row.chat_info}</td>
+                    <td>${row.message}</td>
+                `;
+                tableBody.appendChild(tr);
+            });
+        }
+
+        // Llamar a la función para cargar los datos al cargar la página
+        loadExtractedData();
+
+        // Actualizar los datos al hacer clic en el botón
+        document.getElementById('refreshData').addEventListener('click', loadExtractedData);
     </script>
 </body>
 </html>
