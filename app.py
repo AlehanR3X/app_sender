@@ -128,6 +128,32 @@ class MessageTask:
             self.status = 'error'
             logger.error(f"Error en la tarea [{self.job_id}]: {e}")
 
+# Variable global para manejar la tarea en modo live
+live_task = None
+live_task_lock = threading.Lock()
+
+class LiveExtractionTask(threading.Thread):
+    def __init__(self, channel, limit, realtime, bank_filter):
+        super().__init__()
+        self.channel = channel
+        self.limit = limit
+        self.realtime = realtime
+        self.bank_filter = bank_filter.lower()
+        self.stop_event = threading.Event()
+
+    def run(self):
+        # Simulación de extracción (reemplazar con lógica real)
+        import time
+        for i in range(self.limit):
+            if self.stop_event.is_set():
+                break
+            print(f"Procesando mensaje {i + 1} del canal {self.channel}")
+            time.sleep(1)  # Simula tiempo de procesamiento
+        print("Extracción finalizada.")
+
+    def stop(self):
+        self.stop_event.set()
+
 # Rutas de la aplicación
 @tpl.route('/')
 def index():
@@ -209,6 +235,45 @@ def progress():
         'total': task.total,
         'percent': round(percent, 2)
     }), 200
+
+@tpl.route('/live')
+def live_page():
+    return render_template('live.html')  # Renderiza la plantilla live.html
+
+@tpl.route('/live/start', methods=['POST'])
+def start_live():
+    global live_task
+
+    data = request.get_json()
+    channel = data.get('channel')
+    limit = data.get('limit', 100)
+    realtime = data.get('realtime', False)
+    bank_filter = data.get('bank_filter', '')
+
+    if not channel:
+        return jsonify({'error': 'El canal es obligatorio.'}), 400
+
+    with live_task_lock:
+        if live_task and live_task.is_alive():
+            return jsonify({'error': 'Ya hay una tarea en ejecución.'}), 400
+
+        live_task = LiveExtractionTask(channel, limit, realtime, bank_filter)
+        live_task.start()
+
+    return jsonify({'status': 'Tarea iniciada.'}), 202
+
+@tpl.route('/live/stop', methods=['POST'])
+def stop_live():
+    global live_task
+
+    with live_task_lock:
+        if not live_task or not live_task.is_alive():
+            return jsonify({'error': 'No hay ninguna tarea en ejecución.'}), 400
+
+        live_task.stop()
+        live_task = None
+
+    return jsonify({'status': 'Tarea detenida.'}), 200
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
