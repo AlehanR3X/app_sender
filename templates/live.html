@@ -10,8 +10,10 @@
     <div class="container">
         <h1>Modo Live</h1>
         <form id="liveForm">
-            <label for="channel">Canal:</label>
-            <input type="text" id="channel" placeholder="Ingrese el canal o grupo">
+            <label for="group">Selecciona el grupo:</label>
+            <select id="group">
+                <!-- Los grupos se cargarán dinámicamente aquí -->
+            </select>
 
             <label for="limit">Límite de mensajes:</label>
             <input type="number" id="limit" value="100">
@@ -31,8 +33,24 @@
     </div>
 
     <script>
+        // Cargar los grupos dinámicamente desde el servidor
+        async function loadGroups() {
+            const response = await fetch('/live/groups');
+            const groups = await response.json();
+            const groupSelect = document.getElementById('group');
+            groups.forEach(group => {
+                const option = document.createElement('option');
+                option.value = group.chat_id;
+                option.textContent = group.name;
+                groupSelect.appendChild(option);
+            });
+        }
+
+        // Llamar a la función para cargar los grupos al cargar la página
+        loadGroups();
+
         document.getElementById('startLive').addEventListener('click', async () => {
-            const channel = document.getElementById('channel').value;
+            const group = document.getElementById('group').value;
             const limit = document.getElementById('limit').value;
             const bankFilter = document.getElementById('bankFilter').value;
             const realtime = document.getElementById('realtime').checked;
@@ -40,7 +58,7 @@
             const response = await fetch('/live/start', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ channel, limit, bank_filter: bankFilter, realtime })
+                body: JSON.stringify({ channel: group, limit, bank_filter: bankFilter, realtime })
             });
             const result = await response.json();
             document.getElementById('status').innerText = result.status || result.error;
