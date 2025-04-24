@@ -12,6 +12,7 @@ from config import (
     GROUP_CHAT_ID, GROUP_CHAT2_ID
 )
 from live_config import GROUPS  # Importar los grupos desde live_config.py
+import sqlite3
 
 # Configuración de Flask
 tpl = Flask(__name__)
@@ -280,6 +281,30 @@ def stop_live():
 def get_groups():
     """Devuelve la lista de grupos disponibles para la extracción."""
     return jsonify(GROUPS), 200
+
+@tpl.route('/live/data', methods=['GET'])
+def get_extracted_data():
+    """Devuelve los datos extraídos almacenados en la base de datos."""
+    try:
+        # Conectar a la base de datos SQLite
+        conn = sqlite3.connect('messages.db')
+        cursor = conn.cursor()
+
+        # Consultar los datos extraídos
+        cursor.execute('SELECT date, sender_id, chat_info, message FROM messages ORDER BY id DESC LIMIT 50')
+        rows = cursor.fetchall()
+
+        # Formatear los datos en una lista de diccionarios
+        data = [
+            {"date": row[0], "sender_id": row[1], "chat_info": row[2], "message": row[3]}
+            for row in rows
+        ]
+
+        conn.close()
+        return jsonify(data), 200
+    except Exception as e:
+        logger.error(f"Error al obtener los datos extraídos: {e}")
+        return jsonify({'error': 'No se pudieron obtener los datos extraídos.'}), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
