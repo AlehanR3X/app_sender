@@ -11,6 +11,7 @@ from config import (
     bot_username, bot2_username, bot3_user, bot4_user,
     GROUP_CHAT_ID, GROUP_CHAT2_ID
 )
+from live_config import GROUPS  # Importar los grupos desde live_config.py
 
 # Configuración de Flask
 tpl = Flask(__name__)
@@ -245,13 +246,13 @@ def start_live():
     global live_task
 
     data = request.get_json()
-    channel = data.get('channel')
+    channel = data.get('channel')  # Aquí se recibe el chat_id del grupo
     limit = data.get('limit', 100)
     realtime = data.get('realtime', False)
     bank_filter = data.get('bank_filter', '')
 
     if not channel:
-        return jsonify({'error': 'El canal es obligatorio.'}), 400
+        return jsonify({'error': 'El grupo es obligatorio.'}), 400
 
     with live_task_lock:
         if live_task and live_task.is_alive():
@@ -274,6 +275,11 @@ def stop_live():
         live_task = None
 
     return jsonify({'status': 'Tarea detenida.'}), 200
+
+@tpl.route('/live/groups', methods=['GET'])
+def get_groups():
+    """Devuelve la lista de grupos disponibles para la extracción."""
+    return jsonify(GROUPS), 200
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
