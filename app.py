@@ -20,7 +20,7 @@ tpl.secret_key = os.environ.get('FLASK_SECRET_KEY', 'cambia_esto_por_un_valor_se
 
 # Logging
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,  # Cambiar a DEBUG
     format='%(asctime)s [%(levelname)s] %(message)s'
 )
 logger = logging.getLogger(__name__)
@@ -93,6 +93,7 @@ class MessageTask:
 
     def run(self):
         self.status = 'running'
+        logger.debug(f"Iniciando tarea {self.job_id} con destino {self.destination}")
         loop = asyncio.get_event_loop()
         future = asyncio.run_coroutine_threadsafe(self._send(), loop)
         try:
@@ -101,30 +102,37 @@ class MessageTask:
             logger.error(f"Error en la tarea [{self.job_id}]: {e}")
         if self.sent >= self.total:
             self.status = 'completed'
+            logger.debug(f"Tarea {self.job_id} completada. Mensajes enviados: {self.sent}")
         elif self.stop_event.is_set():
             self.status = 'stopped'
+            logger.debug(f"Tarea {self.job_id} detenida manualmente.")
         else:
             self.status = 'paused'
+            logger.debug(f"Tarea {self.job_id} pausada.")
         logger.info(f"Task {self.job_id} ended with status: {self.status}")
 
     async def _send(self):
         try:
             if not telegram_client.is_connected():
+                logger.debug("Reconectando cliente de Telegram...")
                 await telegram_client.connect()
             for line in self.lines:
                 if self.stop_event.is_set():
+                    logger.debug(f"Tarea {self.job_id} detenida antes de enviar: {line}")
                     break
                 while self.pause_event.is_set():
                     self.status = 'paused'
+                    logger.debug(f"Tarea {self.job_id} pausada. Esperando reanudación...")
                     await asyncio.sleep(0.5)
                 self.status = 'running'
                 message = f"{self.prefix} {line}"
                 try:
+                    logger.debug(f"Enviando mensaje: {message}")
                     await telegram_client.send_message(self.destination, message)
                     self.sent += 1
-                    logger.info(f"[{self.job_id}] Enviado: {message}")
+                    logger.info(f"[{self.job_id}] Mensaje enviado: {message}")
                 except Exception as e:
-                    logger.error(f"[{self.job_id}] Error al enviar: {e}")
+                    logger.error(f"[{self.job_id}] Error al enviar mensaje: {e}")
                 await asyncio.sleep(self.sleep_time)
         except Exception as e:
             self.status = 'error'
@@ -135,25 +143,19 @@ live_task = None
 live_task_lock = threading.Lock()
 
 class LiveExtractionTask(threading.Thread):
-    def __init__(self, channel, limit, realtime, bank_filter):
-        super().__init__()
-        self.channel = channel
-        self.limit = limit
-        self.realtime = realtime
-        self.bank_filter = bank_filter.lower()
-        self.stop_event = threading.Event()
-
     def run(self):
-        # Simulación de extracción (reemplazar con lógica real)
+        logger.debug(f"Iniciando extracción en canal {self.channel} con límite {self.limit}")
         import time
         for i in range(self.limit):
             if self.stop_event.is_set():
+                logger.debug(f"Extracción detenida en el mensaje {i + 1}")
                 break
-            print(f"Procesando mensaje {i + 1} del canal {self.channel}")
+            logger.debug(f"Procesando mensaje {i + 1} del canal {self.channel}")
             time.sleep(1)  # Simula tiempo de procesamiento
-        print("Extracción finalizada.")
+        logger.info("Extracción finalizada.")
 
     def stop(self):
+        logger.debug("Deteniendo tarea de extracción en tiempo real.")
         self.stop_event.set()
 
 # Rutas de la aplicación
@@ -164,6 +166,7 @@ def index():
 @tpl.route('/start', methods=['POST'])
 def start_sending():
     data = request.get_json()
+    logger.debug(f"Datos recibidos para envío: {data}")  # Depuración de datos recibidos
     prefix = data.get('prefix', '')
     lines = data.get('lines', [])
     dest_key = data.get('destination', '')
@@ -171,15 +174,19 @@ def start_sending():
 
     # Validaciones mejoradas
     if not prefix or len(prefix) > 50:
+        logger.error("El prefijo es inválido o excede 50 caracteres.")
         return jsonify({'error': 'El prefijo es requerido y no debe exceder 50 caracteres.'}), 400
     if not isinstance(lines, list) or not lines or len(lines) > 1000 or not all(isinstance(l, str) and len(l) <= 200 for l in lines):
+        logger.error("Las líneas son inválidas o exceden el límite permitido.")
         return jsonify({'error': 'Las líneas deben ser una lista de hasta 1000 elementos, cada uno con un máximo de 200 caracteres.'}), 400
     destination = validate_destination(dest_key)
     if not destination:
+        logger.error(f"Destino inválido: {dest_key}")
         return jsonify({'error': 'Destino inválido.'}), 400
 
     # Crear y lanzar tarea
     job_id = str(uuid.uuid4())
+    logger.debug(f"Creando tarea con ID: {job_id}")
     task = MessageTask(job_id, prefix, lines, destination, sleep_time)
     executor.submit(task.run)
 
@@ -247,18 +254,22 @@ def start_live():
     global live_task
 
     data = request.get_json()
+    logger.debug(f"Datos recibidos para extracción en vivo: {data}")
     channel = data.get('channel')  # Aquí se recibe el chat_id del grupo
     limit = data.get('limit', 100)
     realtime = data.get('realtime', False)
     bank_filter = data.get('bank_filter', '')
 
     if not channel:
+        logger.error("El grupo es obligatorio para iniciar la extracción.")
         return jsonify({'error': 'El grupo es obligatorio.'}), 400
 
     with live_task_lock:
         if live_task and live_task.is_alive():
+            logger.error("Ya hay una tarea en ejecución.")
             return jsonify({'error': 'Ya hay una tarea en ejecución.'}), 400
 
+        logger.debug(f"Iniciando tarea de extracción en vivo para el canal {channel}")
         live_task = LiveExtractionTask(channel, limit, realtime, bank_filter)
         live_task.start()
 
